@@ -11,19 +11,20 @@ using System.IO;
 using Telegram.Bot.Types.InputFiles;
 using System.Diagnostics;
 using System.Text;
-using System.Collections.Generic;
 
 namespace task_9._1._1
 {
     class Program
     {
-        static string destinationFilePath;
-        static string fileName;
-        //static List<string> fileList = new List<string>();
+        //я понимаю, что нужно сделать эти переменные локальными, но я не понимаю, как их передать в метод HandleUpdateAsync
+        static string filePathToModify; //путь к файлу, который необходимо отредактировать
+        static string fileNameToModify; //имя файла, который нужно отредактировать
+        static string finalPath; //Путь к программе
+        //
 
         static void Main(string[] args)
         {
-            string token = "5739146058:AAGQDZwvj2q1uw1aclAmC5iV0KZBlhyo5FE";
+            string token = "";
 
             var botClient = new TelegramBotClient($"{token}");
 
@@ -31,10 +32,12 @@ namespace task_9._1._1
 
             var receiverOptions = new ReceiverOptions
             {
-                AllowedUpdates = Array.Empty<UpdateType>() // receive all update types
+                AllowedUpdates = Array.Empty<UpdateType>()
             };
 
-            string directoryName = $@"D:\sb_homework\homework-9\users_uploads";
+            SetFinalPath();
+
+            string directoryName = $@"{finalPath}\users_uploads";
 
             if (!Directory.Exists(directoryName))
             {
@@ -43,7 +46,7 @@ namespace task_9._1._1
 
             botClient.StartReceiving(
                 updateHandler: HandleUpdateAsync,
-                pollingErrorHandler: HandleErrorAsync,
+                pollingErrorHandler: HandleError,
                 receiverOptions: receiverOptions,
                 cancellationToken: cts.Token
                 );
@@ -53,18 +56,34 @@ namespace task_9._1._1
             cts.Cancel();
         }
 
-        public static async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+        /// <summary>
+        /// Выводит информацию об ошибке в консоль
+        /// </summary>
+        /// <param name="botClient"></param>
+        /// <param name="exception"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        public static Task HandleError(ITelegramBotClient botClient, Exception exception,
+                                       CancellationToken cancellationToken)
         {
             Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(exception));
+            return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Обрабатывает сообщения пользователя
+        /// </summary>
+        /// <param name="botClient"></param>
+        /// <param name="update"></param>
+        /// <param name="token"></param>
+        /// <returns></returns>
         async static Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken token)
         {
             if (update.Type == UpdateType.Message)
             {
                 var message = update.Message;
 
-                string directoryName = $@"D:\sb_homework\homework-9\users_uploads\{message.From.Username}";
+                string directoryName = $@"{finalPath}\users_uploads\{message.From.Username}";
 
                 if (!Directory.Exists(directoryName))
                 {
@@ -81,131 +100,107 @@ namespace task_9._1._1
                     OneTimeKeyboard = true
                 };
 
-                if (message.Type == MessageType.Text)
+                MessageType typeOfMessage;
+                typeOfMessage = message.Type;
+
+                switch (typeOfMessage)
                 {
-                    if (message.Text.ToLower() == "/start")
-                    {
-                        await botClient.SendTextMessageAsync(message.Chat, "Добрый день. Просто пришли мне картинку документом" +
+                    case MessageType.Text:
+                        {
+                            string messageText = message.Text;
+                            switch (messageText)
+                            {
+                                case "/start":
+                                    {
+                                        await botClient.SendTextMessageAsync(message.Chat, "Этот бот может создавать поздравления" +
+                                                                           " с великим праздником Жабья Среда!");
+                                        await botClient.SendTextMessageAsync(message.Chat, "Просто пришли картинку документом" +
                                                                            " и посмотрим, что с ней можно сделать");
+                                        return;
+                                    }
+                                case "It's wednesday, my dudes!":
+                                    {
+                                        string editorPath = $@"{finalPath}\WEDNESDAY.exe";
 
-                        return;
-                    }
-                    else if (message.Text == "It's wednesday, my dudes!")
-                    {
-                        if (destinationFilePath != null)
-                        {
-                            Process.Start(@"D:\sb_homework\homework-9\WEDNESDAY.exe", $@"""{destinationFilePath}""");
-                            await Task.Delay(3000);
+                                        if (filePathToModify != null)
+                                        {
+                                            ModifyDocument(editorPath);
+                                            SendModyfiedDocumentAsync(botClient, message);
+                                        }
 
-                            await using Stream stream = System.IO.File.OpenRead(destinationFilePath);
-                            await botClient.SendDocumentAsync(
-                                chatId: message.Chat.Id,
-                                document: new InputOnlineFile(stream, fileName.Replace("jpg", " (edited).jpg"))
-                                );
+                                        return;
+                                    }
+                                case "Среда, мои чуваки!":
+                                    {
+                                        string editorPath = $@"{finalPath}\СРЕДА.exe";
+
+                                        if (filePathToModify != null)
+                                        {
+                                            ModifyDocument(editorPath);
+                                            SendModyfiedDocumentAsync(botClient, message);
+                                        }
+
+                                        return;
+                                    }                                   
+                            }
+                            break;
                         }
-                        return;
-                    }
-                    else if (message.Text == "Среда, мои чуваки!")
-                    {
-                        if (destinationFilePath != null)
+                    case MessageType.Document:
                         {
-                            Process.Start(@"D:\sb_homework\homework-9\СРЕДА.exe", $@"""{destinationFilePath}""");
-                            await Task.Delay(3000);
+                            DownloadDocumentAsync(botClient, update, message);
+                            await botClient.SendTextMessageAsync(message.Chat.Id, "Выбери вариант обработки фотографии", replyMarkup: keyboard);
 
-                            await using Stream stream = System.IO.File.OpenRead(destinationFilePath);
-                            await botClient.SendDocumentAsync(
-                                chatId: message.Chat.Id,
-                                document: new InputOnlineFile(stream, fileName.Replace("jpg", " (edited).jpg"))
-                                );
+                            return;
                         }
-                        return;
-                    }
-
-                    else if (System.IO.File.Exists($@"{directoryName}\{message.Text}"))
-                    {
-                        await using Stream stream = System.IO.File.OpenRead($@"{directoryName}\{message.Text}");
-
-                        if (message.Text.EndsWith(".jpg"))
+                    case MessageType.Photo:
                         {
-                            await botClient.SendPhotoAsync(message.Chat.Id, new InputOnlineFile(stream, fileName));
-                        }
-                        else if (message.Text.EndsWith(".mp4"))
-                        {
-                            await botClient.SendVideoAsync(message.Chat.Id, new InputOnlineFile(stream, fileName));
-                        }
-                        else if (message.Text.EndsWith(".mp3"))
-                        {
-                            await botClient.SendAudioAsync(message.Chat.Id, new InputOnlineFile(stream, fileName));
-                        }
-                        else
-                        {
-                            await botClient.SendAudioAsync(message.Chat.Id, new InputOnlineFile(stream, fileName));
-                        }
-                        return;
-                    }
-                }
-                else if (message.Type == MessageType.Document)
-                {
-                    var fileId = update.Message.Document.FileId;
-                    var fileInfo = await botClient.GetFileAsync(fileId);
-                    var filePath = fileInfo.FilePath;
-                    fileName = CreateUniqueFileName() + ".jpg";
-                    destinationFilePath = $@"D:\sb_homework\homework-9\users_uploads\{message.From.Username}\{fileName}";
-                    await using FileStream fileStream = System.IO.File.OpenWrite(destinationFilePath);
-                    await botClient.DownloadFileAsync(filePath, fileStream);
-
-                    fileStream.Close();
-
-                    await botClient.SendTextMessageAsync(message.Chat.Id, "Выбери вариант обработки фотографии", replyMarkup: keyboard);
-
-                    return;
-                }
-                else if (message.Type == MessageType.Photo)
-                {
-                    var fileId = update.Message.Photo.Last().FileId;
-                    var fileInfo = await botClient.GetFileAsync(fileId);
-                    var filePath = fileInfo.FilePath;
-                    string fileName = CreateUniqueFileName() + ".jpg";
-
-                    string destinationFilePath = $@"D:\sb_homework\homework-9\users_uploads\{message.From.Username}\{fileName}";
-                    await using FileStream fileStream = System.IO.File.OpenWrite(destinationFilePath);
-                    await botClient.DownloadFileAsync(filePath, fileStream);
-
-                    await botClient.SendTextMessageAsync(message.Chat.Id, "Фото скачано. " +
+                            var fileId = update.Message.Photo.Last().FileId;
+                            DownloadFileAsync(botClient, update, message, typeOfMessage, fileId);
+                            await botClient.SendTextMessageAsync(message.Chat.Id, "Фото скачано. " +
                                                          "Однако для обработки необходимо отправить его документом...");
 
-                    return;
-                }
-                else if (message.Type == MessageType.Audio)
-                {
-                    var fileId = update.Message.Audio.FileId;
-                    var fileInfo = await botClient.GetFileAsync(fileId);
-                    var filePath = fileInfo.FilePath;
-                    string fileName = CreateUniqueFileName() + ".mp3";
-
-                    string destinationFilePath = $@"D:\sb_homework\homework-9\users_uploads\{message.From.Username}\{fileName}";
-                    await using FileStream fileStream = System.IO.File.OpenWrite(destinationFilePath);
-                    await botClient.DownloadFileAsync(filePath, fileStream);
-
-                    await botClient.SendTextMessageAsync(message.Chat.Id, "Аудио скачано. " +
+                            return;
+                        }
+                    case MessageType.Video:
+                        {
+                            var fileId = update.Message.Video.FileId;
+                            DownloadFileAsync(botClient, update, message, typeOfMessage, fileId);
+                            await botClient.SendTextMessageAsync(message.Chat.Id, "Видео скачано. " +
                                                          "Однако для обработки необходимо отправить картинку документом...");
 
-                    return;
-                }
-                else if (message.Type == MessageType.Video)
-                {
-                    var fileId = update.Message.Video.FileId;
-                    var fileInfo = await botClient.GetFileAsync(fileId);
-                    var filePath = fileInfo.FilePath;
-                    string fileName = CreateUniqueFileName() + ".mp4";
-
-                    string destinationFilePath = $@"D:\sb_homework\homework-9\users_uploads\{message.From.Username}\{fileName}";
-                    await using FileStream fileStream = System.IO.File.OpenWrite(destinationFilePath);
-                    await botClient.DownloadFileAsync(filePath, fileStream);
-
-                    await botClient.SendTextMessageAsync(message.Chat.Id, "Видео скачано. " +
+                            return;
+                        }
+                    case MessageType.Audio:
+                        {
+                            var fileId = update.Message.Audio.FileId;
+                            DownloadFileAsync(botClient, update, message, typeOfMessage, fileId);
+                            await botClient.SendTextMessageAsync(message.Chat.Id, "Аудио скачано. " +
                                                          "Однако для обработки необходимо отправить картинку документом...");
 
+                            return;
+                        }
+                }
+
+                if (System.IO.File.Exists($@"{directoryName}\{message.Text}"))
+                {
+                    await using Stream stream = System.IO.File.OpenRead($@"{directoryName}\{message.Text}");
+
+                    if (message.Text.EndsWith(".jpg"))
+                    {
+                        await botClient.SendPhotoAsync(message.Chat.Id, new InputOnlineFile(stream, fileNameToModify));
+                    }
+                    else if (message.Text.EndsWith(".mp4"))
+                    {
+                        await botClient.SendVideoAsync(message.Chat.Id, new InputOnlineFile(stream, fileNameToModify));
+                    }
+                    else if (message.Text.EndsWith(".mp3"))
+                    {
+                        await botClient.SendAudioAsync(message.Chat.Id, new InputOnlineFile(stream, fileNameToModify));
+                    }
+                    else
+                    {
+                        await botClient.SendAudioAsync(message.Chat.Id, new InputOnlineFile(stream, fileNameToModify));
+                    }
                     return;
                 }
 
@@ -215,6 +210,50 @@ namespace task_9._1._1
             }
         }
 
+        /// <summary>
+        /// Скачивает документ, который прислал пользователь
+        /// </summary>
+        /// <param name="botClient"></param>
+        /// <param name="update"></param>
+        /// <param name="message"></param>
+        async static void DownloadDocumentAsync(ITelegramBotClient botClient, Update update, Message message)
+        {
+            var fileId = update.Message.Document.FileId;
+            var fileInfo = await botClient.GetFileAsync(fileId);
+            var filePath = fileInfo.FilePath;
+            fileNameToModify = CreateUniqueFileName(MessageType.Document);
+            filePathToModify = $@"{finalPath}\users_uploads\{message.From.Username}\{fileNameToModify}";
+            await using FileStream fileStream = System.IO.File.OpenWrite(filePathToModify);
+            await botClient.DownloadFileAsync(filePath, fileStream);
+
+            fileStream.Close();
+        }
+
+        /// <summary>
+        /// Скачивает любой файл, который присла пользователь, кроме документа
+        /// </summary>
+        /// <param name="botClient"></param>
+        /// <param name="update"></param>
+        /// <param name="message"></param>
+        /// <param name="typeOfMessage"></param>
+        /// <param name="fileId"></param>
+        async static void DownloadFileAsync(ITelegramBotClient botClient, Update update, Message message, 
+                                            MessageType typeOfMessage, string fileId)
+        {
+            var fileInfo = await botClient.GetFileAsync(fileId);
+            var filePath = fileInfo.FilePath;
+            string fileName = CreateUniqueFileName(typeOfMessage);
+            string destinationFilePath = $@"{finalPath}\users_uploads\{message.From.Username}\{fileName}";
+            await using FileStream fileStream = System.IO.File.OpenWrite(destinationFilePath);
+            await botClient.DownloadFileAsync(filePath, fileStream);
+
+            fileStream.Close();
+        }
+        /// <summary>
+        /// Возвращает строку из имен файлов, которые прислал пользователь
+        /// </summary>
+        /// <param name="directoryName"></param>
+        /// <returns></returns>
         static string GetFilesNameString(string directoryName)
         {
             string fileNameString = "";
@@ -224,13 +263,71 @@ namespace task_9._1._1
             {
                 fileNameString += Path.GetFileName(file.FullName) + "\n";
             }
-
+            
             return fileNameString;
         }
 
-        static string CreateUniqueFileName()
+        /// <summary>
+        /// Создает уникальное имя файлу
+        /// </summary>
+        /// <param name="typeOfMessage"></param>
+        /// <returns></returns>
+        static string CreateUniqueFileName(MessageType typeOfMessage)
         {
-            return Convert.ToBase64String(Encoding.UTF8.GetBytes(Guid.NewGuid().ToString().Remove(13))).TrimEnd('=');
+            var fileNameString = Convert.ToBase64String(Encoding.UTF8.GetBytes(Guid.NewGuid().ToString().Remove(13))).TrimEnd('=');
+            switch (typeOfMessage)
+            {
+                case MessageType.Audio:
+                    {
+                        fileNameString += ".mp3";
+                        break;
+                    }
+                case MessageType.Video:
+                    {
+                        fileNameString += ".mp4";
+                        break;
+                    }
+                case MessageType.Document:
+                case MessageType.Photo:
+                    {
+                        fileNameString += ".jpg";
+                        break;
+                    }
+            }
+            return fileNameString;
+
         }
-}
+
+        /// <summary>
+        /// Редактирует документ, который прислал пользоваетель
+        /// </summary>
+        /// <param name="editorPath"></param>
+        static void ModifyDocument(string editorPath)
+        {
+            Process.Start(editorPath, $@"""{filePathToModify}""");
+        }
+
+        /// <summary>
+        /// Отправляет отредактированные документы
+        /// </summary>
+        /// <param name="botClient"></param>
+        /// <param name="message"></param>
+        async static void SendModyfiedDocumentAsync(ITelegramBotClient botClient, Message message)
+        {
+            await Task.Delay(3000);
+            await using Stream stream = System.IO.File.OpenRead(filePathToModify);
+            await botClient.SendDocumentAsync(message.Chat.Id, new InputOnlineFile(stream, fileNameToModify.Replace("jpg", " (edited).jpg")));
+            stream.Close();
+        }
+
+        /// <summary>
+        /// Определяет путь к программе
+        /// </summary>
+        static void SetFinalPath()
+        {
+            string path = Directory.GetCurrentDirectory();
+            int indexToRemove = path.IndexOf("homework-9") + 10;
+            finalPath = path.Remove(indexToRemove);
+        }
+    }
 }
