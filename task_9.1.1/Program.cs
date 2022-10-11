@@ -326,7 +326,7 @@ namespace task_9._1._1
         static void SetFinalPath()
         {
             string path = Directory.GetCurrentDirectory();
-            int indexToRemove = path.IndexOf("homework-9") + 10;
+            int indexToRemove = path.IndexOf("task_9.1.1") + 10;
             finalPath = path.Remove(indexToRemove);
         }
     }
